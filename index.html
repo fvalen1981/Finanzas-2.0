@@ -941,6 +941,7 @@ function toast(msg, type='ok'){
 const MODULES = [
   {id:'dashboard', label:'Dashboard General', icon:'dashboard', sub:'Resumen financiero general', group:'Panel'},
   {id:'movimientos', label:'Movimientos', icon:'movements', sub:'Ingresos y egresos diarios', group:'Operación'},
+  {id:'saldos', label:'Saldos', icon:'wallet', sub:'Bolsillos y cajas con saldo', group:'Operación'},
   {id:'presupuesto', label:'Presupuesto', icon:'budget', sub:'Presupuesto mensual proyectado', group:'Operación'},
   {id:'flujo', label:'Flujo 5 Años', icon:'flow', sub:'Flujo de caja proyectado a 60 meses', group:'Operación'},
   {id:'tarjetas', label:'Tarjetas', icon:'card', sub:'Tarjetas de crédito y consumos', group:'Deuda'},
@@ -1191,6 +1192,16 @@ function blankDB(){
   d.prestamos=[]; d.inversiones=[]; d.metas=[];
   d.patrimonio={activos:[{id:uid(),nombre:'Ahorros cierre junio',categoria:'Bancos',valor:5600000}],pasivos:[]};
   d.alertasResueltas=[]; d.simulaciones=[];
+  // Bolsillos de saldo precargados (modo: 'recarga' arranca de cero cada mes, 'acumula' pasa el saldo)
+  d.saldos=[
+    {id:uid(),nombre:'Caja Chica Familiar - Fer',modo:'recarga',responsable:'Fernando',color:'#2d9bff'},
+    {id:uid(),nombre:'Caja Chica Familiar - Marie',modo:'recarga',responsable:'Mariela',color:'#a855ff'},
+    {id:uid(),nombre:'Caja Chica Fer',modo:'recarga',responsable:'Fernando',color:'#2bff9e'},
+    {id:uid(),nombre:'Caja Chica Marie',modo:'recarga',responsable:'Mariela',color:'#ff3d7f'},
+    {id:uid(),nombre:'Tarjetas de crédito',modo:'acumula',responsable:'Compartido',color:'#ffb020'},
+    {id:uid(),nombre:'Supermercado',modo:'recarga',responsable:'Compartido',color:'#22d3ee'},
+    {id:uid(),nombre:'Cigarrillos',modo:'recarga',responsable:'Compartido',color:'#818cf8'},
+  ];
   // Precarga solicitada: arranque en Julio 2026 con ahorro de cierre de junio
   d.config.anioInicial = 2026;
   d.config.mesInicial  = 6;         // 6 = Julio (los meses van de 0 a 11)
@@ -1745,6 +1756,7 @@ function editMovimiento(id){
     {key:'rubro',label:'Rubro',type:'select',options:DB.rubros.map(r=>r.nombre),value:m.rubro||DB.rubros[0]?.nombre},
     {key:'concepto',label:'Concepto',type:'text',value:m.concepto,required:true},
     {key:'responsable',label:'Responsable',type:'select',options:RESPONSABLES,value:m.responsable||'Compartido',hint:'De quién es el gasto/ingreso: Fernando, Mariela o Compartido.'},
+    {key:'saldoId',label:'Bolsillo (de dónde sale la plata)',type:'select',options:[{value:'',label:'— Ninguno —'},...DB.saldos.map(s=>({value:s.id,label:s.nombre}))],value:m.saldoId||'',hint:'Si pagaste este gasto desde un bolsillo (caja chica, super, etc.), elegilo: se descuenta de su saldo.'},
     {key:'medio',label:'Medio de pago',type:'select',options:MEDIOS_PAGO,value:m.medio||'Efectivo'},
     {key:'tarjetaId',label:'Tarjeta asociada (para "Pago tarjeta")',type:'select',options:[{value:'',label:'— Ninguna —'},...DB.tarjetas.map(t=>({value:t.id,label:t.nombre}))],value:m.tarjetaId||'',hint:'Al registrar un "Pago tarjeta", elegí la tarjeta: el saldo de esa tarjeta descuenta este pago automáticamente.'},
     {key:'prestamoId',label:'Préstamo asociado (para "Pago deuda")',type:'select',options:[{value:'',label:'— Ninguno —'},...DB.prestamos.map(p=>({value:p.id,label:p.entidad+' · '+p.tipo}))],value:m.prestamoId||'',hint:'Al registrar un "Pago deuda", elegí el préstamo: su saldo descuenta este pago automáticamente.'},
@@ -1838,6 +1850,140 @@ function monthList60(){
   return list;
 }
 function presRows(anio,mes){ return DB.presupuesto.filter(b=>b.anio===anio && b.mes===mes); }
+
+/* ==================================================================
+   MÓDULO · SALDOS (bolsillos con saldo que sube y baja)
+   Un bolsillo suma con "recargas" (movimientos con saldoRecarga=id)
+   y resta con gastos (movimientos con saldoId=id).
+   modo 'recarga': el saldo se calcula solo dentro del mes en curso.
+   modo 'acumula': el saldo considera todo el histórico.
+   ================================================================== */
+function saldoDe(bolsillo, mesKey){
+  // mesKey opcional: si el bolsillo es modo 'recarga', se limita a ese mes (por defecto, el actual)
+  const key = mesKey || currentMonthKey();
+  const enRango = m => bolsillo.modo==='acumula' ? true : (monthKeyOf(m.fecha)===key);
+  let cargado=0, gastado=0;
+  DB.movimientos.forEach(m=>{
+    if(!enRango(m)) return;
+    if(m.saldoRecarga===bolsillo.id) cargado += num(m.monto);   // recarga: entra plata al bolsillo
+    else if(m.saldoId===bolsillo.id) gastado += num(m.monto);   // gasto pagado desde el bolsillo
+  });
+  return { cargado, gastado, disponible: cargado-gastado };
+}
+
+let saldosMes = currentMonthKey();
+RENDERERS.saldos = (root)=>{
+  const meses = [...new Set(DB.movimientos.map(m=>monthKeyOf(m.fecha)))].sort().reverse();
+  if(!meses.includes(saldosMes)) meses.unshift(saldosMes);
+  root.innerHTML = `
+    <div class="hint" style="margin-bottom:14px">Cada bolsillo tiene un saldo que sube con recargas (transferencias de inicio de mes) y baja con los gastos que pagás desde él. Así ves cuánto queda.</div>
+    <div class="btn-row" style="justify-content:space-between;margin-bottom:14px;align-items:center">
+      <select id="saldosMesSel" class="inp-inline" style="max-width:170px" onchange="saldosMes=this.value; go('saldos')">
+        ${meses.map(k=>`<option value="${k}" ${k===saldosMes?'selected':''}>${monthLabel(k)}</option>`).join('')}
+      </select>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="recargarSaldo()">${icon('plus')} Recargar bolsillo</button>
+        <button class="btn btn-primary" onclick="editSaldo()">${icon('plus')} Nuevo bolsillo</button>
+      </div>
+    </div>
+    <div class="grid g-3">
+      ${DB.saldos.length? DB.saldos.map(b=>{
+        const s = saldoDe(b, saldosMes);
+        const usoPct = s.cargado>0 ? (s.gastado/s.cargado)*100 : (s.gastado>0?100:0);
+        const col = b.color||'#818cf8';
+        const negativo = s.disponible<0;
+        return `<div class="card pad" style="border-top:2px solid ${col}">
+          <div class="spread">
+            <div><h4 style="font-family:var(--font-display);font-size:14.5px">${esc(b.nombre)}</h4>
+              <span class="section-tag">${b.modo==='acumula'?'Acumula saldo':'Se recarga cada mes'} · ${esc(b.responsable||'Compartido')}</span></div>
+            <span class="pill" style="background:${col}22;color:${col}">${esc(b.responsable||'—')}</span>
+          </div>
+          <div style="margin:14px 0 8px">
+            <div class="k-label" style="font-size:10.5px">Disponible</div>
+            <div style="font-family:var(--font-mono);font-size:22px;font-weight:600;color:${negativo?'var(--red)':col}">${money(s.disponible)}</div>
+          </div>
+          <div class="progress bar-${usoPct>100?'red':usoPct>80?'amber':'blue'}"><span style="width:${clamp(usoPct,0,100)}%"></span></div>
+          <div class="goal-stats">
+            <div><span>Cargado</span><b class="pos">${money(s.cargado)}</b></div>
+            <div><span>Gastado</span><b class="neg">${money(s.gastado)}</b></div>
+            <div><span>Usado</span><b>${pct(usoPct,0)}</b></div>
+          </div>
+          ${negativo?`<div class="hint warn" style="margin-top:8px">Gastaste más de lo cargado en este bolsillo.</div>`:''}
+          <div class="btn-row" style="margin-top:12px">
+            <button class="btn btn-sm btn-ghost" onclick="verDetalleSaldo('${b.id}')">${icon('search')} Detalle</button>
+            <button class="btn btn-sm btn-green" onclick="recargarSaldo('${b.id}')">${icon('plus')} Recargar</button>
+            <button class="btn btn-sm btn-ghost" onclick="editSaldo('${b.id}')">${icon('edit')}</button>
+            <button class="btn btn-sm btn-danger" onclick="delSaldo('${b.id}')">${icon('trash')}</button>
+          </div>
+        </div>`;
+      }).join('') : emptyState('wallet','Sin bolsillos','Creá tu primer bolsillo para controlar saldos.')}
+    </div>`;
+};
+
+function editSaldo(id){
+  const b = id? DB.saldos.find(x=>x.id===id):{};
+  openForm(id?'Editar bolsillo':'Nuevo bolsillo',[
+    {key:'nombre',label:'Nombre del bolsillo',type:'text',value:b.nombre,required:true},
+    {key:'modo',label:'Modo de saldo',type:'select',options:[{value:'recarga',label:'Se recarga cada mes (arranca de cero)'},{value:'acumula',label:'Acumula (lo que sobra pasa al mes siguiente)'}],value:b.modo||'recarga',hint:'Recarga: el saldo se mide dentro del mes. Acumula: suma todo el histórico.'},
+    {key:'responsable',label:'Responsable',type:'select',options:RESPONSABLES,value:b.responsable||'Compartido'},
+    {key:'color',label:'Color',type:'color',value:b.color||'#2d9bff'},
+  ], data=>{
+    if(id){ Object.assign(b,data); } else { DB.saldos.push({id:uid(),...data}); }
+    saveDB(); go('saldos'); toast(id?'Bolsillo actualizado':'Bolsillo creado');
+  });
+}
+function delSaldo(id){
+  const b=DB.saldos.find(x=>x.id===id);
+  confirmModal('Eliminar bolsillo',`¿Eliminar "<b>${esc(b.nombre)}</b>"? Los movimientos asociados quedan, pero pierden el vínculo con este bolsillo.`,()=>{
+    DB.saldos=DB.saldos.filter(x=>x.id!==id); saveDB(); go('saldos'); toast('Bolsillo eliminado');
+  });
+}
+
+// Recargar = crear un movimiento que SUMA al bolsillo (la transferencia de inicio de mes)
+function recargarSaldo(id){
+  if(!DB.saldos.length){ toast('Creá un bolsillo primero','err'); return; }
+  const b = id? DB.saldos.find(x=>x.id===id):null;
+  openForm('Recargar bolsillo',[
+    {key:'saldoRecarga',label:'Bolsillo a recargar',type:'select',options:DB.saldos.map(s=>({value:s.id,label:s.nombre})),value:id||DB.saldos[0].id,required:true},
+    {key:'fecha',label:'Fecha',type:'date',value:todayISO(),required:true},
+    {key:'monto',label:'Monto a cargar',type:'number',value:'',required:true},
+    {key:'responsable',label:'Responsable',type:'select',options:RESPONSABLES,value:(b&&b.responsable)||'Compartido'},
+    {key:'comentario',label:'Comentario',type:'text',value:'',full:true},
+  ], data=>{
+    const bol = DB.saldos.find(s=>s.id===data.saldoRecarga);
+    DB.movimientos.push({ id:uid(), fecha:data.fecha, tipo:'Ahorro', rubro:'Recarga de saldo',
+      concepto:'Recarga · '+(bol?bol.nombre:''), medio:'Transferencia', responsable:data.responsable,
+      monto:num(data.monto), moneda:DB.config.moneda, saldoRecarga:data.saldoRecarga,
+      esRecarga:true, comentario:data.comentario });
+    saveDB(); go('saldos'); toast('Bolsillo recargado');
+  });
+}
+
+// Detalle: todos los movimientos (recargas y gastos) de un bolsillo en el mes seleccionado
+function verDetalleSaldo(id){
+  const b=DB.saldos.find(x=>x.id===id); if(!b) return;
+  const key=saldosMes;
+  const enRango = m => b.modo==='acumula' ? true : (monthKeyOf(m.fecha)===key);
+  const movs = DB.movimientos.filter(m=> enRango(m) && (m.saldoRecarga===id || m.saldoId===id))
+    .sort((a,b2)=>b2.fecha.localeCompare(a.fecha));
+  const s=saldoDe(b,key);
+  const rows = movs.length? movs.map(m=>{
+    const esRec = m.saldoRecarga===id;
+    return `<tr>
+      <td>${fmtDate(m.fecha,true)}</td>
+      <td>${esc(m.concepto||m.rubro)}</td>
+      <td>${respPill(m.responsable||'Compartido')}</td>
+      <td class="num ${esRec?'pos':'neg'}">${esRec?'+':'−'}${money(m.monto)}</td>
+    </tr>`;
+  }).join('') : tableEmpty(4,'Sin movimientos en este bolsillo');
+  infoModal('Detalle · '+b.nombre, `
+    <div class="grid g-3" style="margin-bottom:12px">
+      ${miniStat('Cargado',money(s.cargado),'pos')}
+      ${miniStat('Gastado',money(s.gastado),'neg')}
+      ${miniStat('Disponible',money(s.disponible),s.disponible<0?'neg':'pos')}
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Resp.</th><th class="num">Monto</th></tr></thead><tbody>${rows}</tbody></table></div>`, true);
+}
 
 RENDERERS.presupuesto = (root)=>{
   if(!presMonth) presMonth = {anio:DB.config.anioInicial, mes:DB.config.mesInicial};
@@ -2967,7 +3113,7 @@ function init(){
   DB = loadDB();
   if(!DB){ DB = blankDB(); saveDB(); }
   // Migración defensiva: asegura arrays esperados
-  ['rubros','movimientos','presupuesto','flujo','tarjetas','consumos','prestamos','inversiones','metas','alertasResueltas','simulaciones'].forEach(k=>{ if(!Array.isArray(DB[k])) DB[k]=[]; });
+  ['rubros','movimientos','presupuesto','flujo','tarjetas','consumos','prestamos','inversiones','metas','alertasResueltas','simulaciones','saldos'].forEach(k=>{ if(!Array.isArray(DB[k])) DB[k]=[]; });
   if(!DB.patrimonio) DB.patrimonio={activos:[],pasivos:[]};
   if(!DB.escenarios) DB.escenarios={optimista:{ingresos:8,egresos:-5,rendimiento:4,ahorro:15},pesimista:{ingresos:-10,egresos:8,rendimiento:-3,imprevistos:6}};
   buildNav();
