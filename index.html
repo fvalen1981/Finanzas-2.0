@@ -198,7 +198,8 @@ input,select,textarea{font-family:inherit}
   box-shadow:var(--shadow);position:relative;overflow:hidden;
 }
 .card.pad{padding:20px}
-.card.filters-card{overflow:visible}
+.card.filters-card{overflow:visible;position:relative;z-index:50}
+.card.filters-card .table-wrap,.filters-card~.table-wrap{z-index:1}
 .card-title{font-size:12.5px;color:var(--text-dim);font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:14px}
 .card-title .ic{width:15px;height:15px;flex-shrink:0;stroke-width:2}
 svg.ic{width:16px;height:16px}
