@@ -256,6 +256,9 @@ svg.ic{width:16px;height:16px}
 
 /* ---------- TABLES ---------- */
 .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface)}
+/* Columna de acciones (editar/borrar) siempre visible, fija a la derecha */
+.col-acc{position:sticky;right:0;background:var(--surface);z-index:3;box-shadow:-6px 0 8px -4px rgba(0,0,0,.25)}
+thead .col-acc{z-index:4}
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
 thead th{
   text-align:left;padding:12px 14px;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;
@@ -313,7 +316,11 @@ select{cursor:pointer;appearance:none;
 .inp-inline{max-width:150px}
 /* ---- multiselect de filtros ---- */
 .ms{position:relative;min-width:150px}
-.ms.open{z-index:200}
+.ms.open{z-index:5000}
+/* Los últimos filtros de la fila abren su panel alineado a la derecha para no salirse */
+.ms:nth-last-child(-n+2) .ms-panel{left:auto;right:0}
+/* El bloque de totales debajo de los filtros no debe competir en apilado con el panel abierto */
+#movTotals{position:relative;z-index:1}
 .ms-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;
   background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--text-dim);
   padding:9px 12px;font-size:13px;font-weight:500;cursor:pointer;transition:.15s;font-family:var(--font-body)}
@@ -322,7 +329,7 @@ select{cursor:pointer;appearance:none;
 .ms-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ms-chev{width:15px;height:15px;flex-shrink:0;transition:transform .18s;opacity:.7}
 .ms.open .ms-chev{transform:rotate(180deg)}
-.ms-panel{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;z-index:2000;
+.ms-panel{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;max-width:min(320px,92vw);z-index:5000;
   background:var(--surface-solid);border:1px solid var(--border-strong);border-radius:12px;
   box-shadow:var(--shadow);padding:6px;display:none;max-height:280px;overflow:auto}
 .ms.open .ms-panel{display:block;animation:pop .14s}
@@ -1697,7 +1704,7 @@ function renderMovTable(){
   $('#movTable').innerHTML = `
     <thead><tr>
       <th>Fecha</th><th>Tipo</th><th>Rubro</th><th>Concepto</th><th>Resp.</th><th>Medio</th>
-      <th class="num">Monto</th><th>Fijo/Var</th><th>Rec.</th><th></th>
+      <th class="num">Monto</th><th>Fijo/Var</th><th>Rec.</th><th class="col-acc"></th>
     </tr></thead>
     <tbody>${ rows.length? rows.map(m=>`
       <tr>
@@ -1710,7 +1717,7 @@ function renderMovTable(){
         <td class="num ${m.tipo==='Ingreso'?'pos':'neg'}">${m.tipo==='Ingreso'?'+':'−'}${money(m.monto)}</td>
         <td><span class="section-tag">${esc(m.fijoVar||'—')}</span></td>
         <td>${m.recurrente==='Sí'?'<span class="pill pill-blue">Sí</span>':'<span class="muted">No</span>'}</td>
-        <td><div class="row-actions">
+        <td class="col-acc"><div class="row-actions">
           <button class="ia" onclick="editMovimiento('${m.id}')" title="Editar">${icon('edit')}</button>
           <button class="ia del" onclick="delMovimiento('${m.id}')" title="Eliminar">${icon('trash')}</button>
         </div></td>
