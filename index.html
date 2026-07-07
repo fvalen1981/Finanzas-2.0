@@ -2,7 +2,11 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Finanzas ERP" />
+<meta name="theme-color" content="#05070d" />
 <title>Finanzas Personales ERP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -496,6 +500,78 @@ canvas{max-width:100%}
   .content{padding:14px}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ============================================================
+   OPTIMIZACIÓN MÓVIL / iPhone (pasada completa)
+   ============================================================ */
+@media(max-width:860px){
+  /* Respeta el notch y la barra inferior del iPhone */
+  .topbar{padding-top:max(14px, env(safe-area-inset-top)); padding-left:max(16px, env(safe-area-inset-left)); padding-right:max(16px, env(safe-area-inset-right))}
+  .content{padding-left:max(16px, env(safe-area-inset-left)); padding-right:max(16px, env(safe-area-inset-right)); padding-bottom:max(24px, env(safe-area-inset-bottom))}
+  .sidebar{padding-top:max(16px, env(safe-area-inset-top))}
+
+  /* Topbar más compacta y ordenada */
+  .topbar{position:sticky; top:0; z-index:60; gap:8px; flex-wrap:wrap; row-gap:8px}
+  .topbar h1,.page-title{font-size:18px}
+  .page-sub{font-size:11px}         /* subtítulo más chico para ganar espacio */
+  .top-chip{font-size:11px; padding:6px 9px}
+  .hamburger{width:42px;height:42px}       /* área de toque cómoda */
+
+  /* Botones y controles con área de toque >= 44px (estándar Apple) */
+  .btn{padding:11px 14px; font-size:14px}
+  .btn-sm{padding:8px 11px; font-size:12.5px}
+  .theme-btn{width:42px;height:42px}
+  .ia{width:36px;height:36px}              /* íconos de acción en filas */
+  input,select,textarea,.ms-btn{font-size:16px !important}  /* 16px evita el zoom automático de iOS */
+
+  /* KPIs: 2 columnas, números legibles */
+  .g-kpi{grid-template-columns:repeat(2,1fr); gap:10px}
+  .kpi{padding:14px}
+  .kpi .k-val,.kpi .big{font-size:20px}
+  .kpi .k-label{font-size:10px}
+
+  /* Tarjetas y secciones con menos margen para aprovechar ancho */
+  .card.pad{padding:15px}
+  .sec-head h2{font-size:16px}
+
+  /* Filtros: ocupan todo el ancho, apilados y cómodos */
+  .filters{gap:8px}
+  .search{flex:1 1 100%; min-width:0}
+  .ms{flex:1 1 calc(50% - 4px); min-width:0}   /* filtros de a dos por fila */
+  .ms-panel{position:fixed; left:12px; right:12px; top:auto; min-width:0; max-height:55vh}
+
+  /* Tablas: scroll horizontal suave con "pista" visual y celdas legibles */
+  .table-wrap{-webkit-overflow-scrolling:touch; border-radius:12px; position:relative}
+  table{font-size:13px}
+  th,td{padding:10px 12px; white-space:nowrap}
+  .rowh{position:sticky; left:0; z-index:2}   /* primera columna fija al hacer scroll */
+
+  /* Matriz del Flujo: primera columna (conceptos) fija y sombreada */
+  .matrix .rowh{position:sticky; left:0; box-shadow:2px 0 6px rgba(0,0,0,.25)}
+
+  /* Modales tipo hoja: ocupan casi toda la pantalla, más usables con el pulgar */
+  .modal{max-width:100%; width:100%; max-height:92vh; border-radius:18px 18px 0 0; margin-top:auto}
+  .modal-back{align-items:flex-end}
+  .modal-body{padding:18px; padding-bottom:max(18px, env(safe-area-inset-bottom))}
+  .form-grid{grid-template-columns:1fr; gap:12px}
+
+  /* Gráficos con altura fija para que no se aplasten */
+  .chart-box{height:240px}
+  .chart-box.sm{height:200px}
+
+  /* Toasts arriba, sin tapar el pulgar */
+  .toasts{left:12px; right:12px; bottom:auto; top:max(12px, env(safe-area-inset-top))}
+}
+
+@media(max-width:520px){
+  .g-4,.g-3{grid-template-columns:1fr}
+  .g-kpi{grid-template-columns:1fr}       /* KPIs de a uno en pantallas muy chicas */
+  .content{padding:14px}
+  .modal-body{padding:16px}
+  .ms{flex:1 1 100%}                       /* filtros de a uno */
+  .btn-row{flex-wrap:wrap}
+  .btn-row .btn{flex:1 1 auto}
+}
 </style>
 <!-- ============================================================
      CONECTOR FIREBASE · Finanzas ERP
@@ -718,6 +794,7 @@ const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov'
 const MESES_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const TIPOS_MOV = ['Ingreso','Egreso','Ahorro','Inversión','Pago deuda','Pago tarjeta'];
 const MEDIOS_PAGO = ['Efectivo','Transferencia','Tarjeta crédito','Tarjeta débito','Banco','Billetera','Otro'];
+const RESPONSABLES = ['Compartido','Fernando','Mariela'];
 const TIPOS_RUBRO = ['Ingreso','Egreso fijo','Egreso variable','Ahorro','Inversión'];
 const GRUPOS_FLUJO = ['Ingresos','Egresos fijos','Egresos variables','Ahorros','Inversiones','Deudas','Tarjetas de crédito'];
 
@@ -1516,7 +1593,7 @@ function projectFlow(nMonths){
 /* ==================================================================
    MÓDULO 2 · MOVIMIENTOS DIARIOS
    ================================================================== */
-let movFilters = { mes:[], tipo:[], rubro:[], medio:[], q:'' };
+let movFilters = { mes:[], tipo:[], rubro:[], medio:[], responsable:[], q:'' };
 
 RENDERERS.movimientos = (root)=>{
   const mesesDisp = [...new Set(DB.movimientos.map(m=>monthKeyOf(m.fecha)))].sort().reverse();
@@ -1532,6 +1609,7 @@ RENDERERS.movimientos = (root)=>{
         ${msField('tipo','Todo tipo', TIPOS_MOV)}
         ${msField('rubro','Todo rubro', DB.rubros.map(r=>r.nombre))}
         ${msField('medio','Todo medio', MEDIOS_PAGO)}
+        ${msField('responsable','Todo responsable', RESPONSABLES)}
       </div>
       <div id="movTotals" class="grid g-4" style="margin-top:6px"></div>
     </div>
@@ -1592,7 +1670,7 @@ function updateMsSummary(key){
   el.querySelector('.ms-summary').textContent = summary;
   el.querySelector('.ms-btn').classList.toggle('active', sel.length>0);
 }
-function defaultPh(key){ return {mes:'Todos los meses',tipo:'Todo tipo',rubro:'Todo rubro',medio:'Todo medio'}[key]||'Todos'; }
+function defaultPh(key){ return {mes:'Todos los meses',tipo:'Todo tipo',rubro:'Todo rubro',medio:'Todo medio',responsable:'Todo responsable'}[key]||'Todos'; }
 
 function filteredMovs(){
   return DB.movimientos.filter(m=>{
@@ -1600,11 +1678,16 @@ function filteredMovs(){
     if(movFilters.tipo.length && !movFilters.tipo.includes(m.tipo)) return false;
     if(movFilters.rubro.length && !movFilters.rubro.includes(m.rubro)) return false;
     if(movFilters.medio.length && !movFilters.medio.includes(m.medio)) return false;
+    if(movFilters.responsable.length && !movFilters.responsable.includes(m.responsable||'Compartido')) return false;
     if(movFilters.q && !(m.concepto||'').toLowerCase().includes(movFilters.q)) return false;
     return true;
   }).sort((a,b)=> b.fecha.localeCompare(a.fecha));
 }
 
+function respPill(r){
+  const map = {'Fernando':'blue','Mariela':'violet','Compartido':'gray'};
+  return `<span class="pill pill-${map[r]||'gray'}">${esc(r||'Compartido')}</span>`;
+}
 function renderMovTable(){
   const rows = filteredMovs();
   const tipoPill = t=>{
@@ -1613,7 +1696,7 @@ function renderMovTable(){
   };
   $('#movTable').innerHTML = `
     <thead><tr>
-      <th>Fecha</th><th>Tipo</th><th>Rubro</th><th>Concepto</th><th>Medio</th>
+      <th>Fecha</th><th>Tipo</th><th>Rubro</th><th>Concepto</th><th>Resp.</th><th>Medio</th>
       <th class="num">Monto</th><th>Fijo/Var</th><th>Rec.</th><th></th>
     </tr></thead>
     <tbody>${ rows.length? rows.map(m=>`
@@ -1622,6 +1705,7 @@ function renderMovTable(){
         <td>${tipoPill(m.tipo)}</td>
         <td>${esc(m.rubro)}</td>
         <td>${esc(m.concepto)}${m.comprobante?` <span class="section-tag" title="${esc(m.comprobante)}">📎</span>`:''}</td>
+        <td>${respPill(m.responsable||'Compartido')}</td>
         <td class="muted">${esc(m.medio)}</td>
         <td class="num ${m.tipo==='Ingreso'?'pos':'neg'}">${m.tipo==='Ingreso'?'+':'−'}${money(m.monto)}</td>
         <td><span class="section-tag">${esc(m.fijoVar||'—')}</span></td>
@@ -1652,6 +1736,7 @@ function editMovimiento(id){
     {key:'tipo',label:'Tipo',type:'select',options:TIPOS_MOV,value:m.tipo||'Egreso',required:true},
     {key:'rubro',label:'Rubro',type:'select',options:DB.rubros.map(r=>r.nombre),value:m.rubro||DB.rubros[0]?.nombre},
     {key:'concepto',label:'Concepto',type:'text',value:m.concepto,required:true},
+    {key:'responsable',label:'Responsable',type:'select',options:RESPONSABLES,value:m.responsable||'Compartido',hint:'De quién es el gasto/ingreso: Fernando, Mariela o Compartido.'},
     {key:'medio',label:'Medio de pago',type:'select',options:MEDIOS_PAGO,value:m.medio||'Efectivo'},
     {key:'tarjetaId',label:'Tarjeta asociada (para "Pago tarjeta")',type:'select',options:[{value:'',label:'— Ninguna —'},...DB.tarjetas.map(t=>({value:t.id,label:t.nombre}))],value:m.tarjetaId||'',hint:'Al registrar un "Pago tarjeta", elegí la tarjeta: el saldo de esa tarjeta descuenta este pago automáticamente.'},
     {key:'prestamoId',label:'Préstamo asociado (para "Pago deuda")',type:'select',options:[{value:'',label:'— Ninguno —'},...DB.prestamos.map(p=>({value:p.id,label:p.entidad+' · '+p.tipo}))],value:m.prestamoId||'',hint:'Al registrar un "Pago deuda", elegí el préstamo: su saldo descuenta este pago automáticamente.'},
