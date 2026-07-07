@@ -1194,6 +1194,7 @@ function blankDB(){
   d.alertasResueltas=[]; d.simulaciones=[];
   // Bolsillos de saldo precargados (modo: 'recarga' arranca de cero cada mes, 'acumula' pasa el saldo)
   d.saldos=[
+    {id:uid(),nombre:'Ahorros',modo:'acumula',responsable:'Compartido',color:'#2bff9e',esAhorro:true},
     {id:uid(),nombre:'Caja Chica Familiar - Fer',modo:'recarga',responsable:'Fernando',color:'#2d9bff'},
     {id:uid(),nombre:'Caja Chica Familiar - Marie',modo:'recarga',responsable:'Mariela',color:'#a855ff'},
     {id:uid(),nombre:'Caja Chica Fer',modo:'recarga',responsable:'Fernando',color:'#2bff9e'},
@@ -1475,7 +1476,7 @@ RENDERERS.dashboard = (root)=>{
       ${kpi('Egresos del mes', money(tot.egresoTotal),'acc-red','wallet', trend(varEgr)+' vs mes anterior')}
       ${kpi('Resultado mensual', money(tot.Ingreso - tot.egresoTotal), (tot.Ingreso - tot.egresoTotal)>=0?'acc-green':'acc-red','flow','Ingresos − egresos')}
       ${kpi('Ahorro del mes', money(tot.Ahorro),'acc-blue','goal', pct(ahorroPct,1)+' de ingresos')}
-      ${kpi('Ahorro acumulado', money(DB.movimientos.filter(m=>m.tipo==='Ahorro').reduce((s,m)=>s+num(m.monto),0)),'acc-green','networth','Suma de movimientos de ahorro')}
+      ${kpi('Ahorro acumulado', money(ahorroAcumulado()),'acc-green','networth','Aportes − retiros de ahorro')}
       ${kpi('Total invertido', money(inv.valorActual),'acc-violet','invest','Valor actual cartera')}
       ${kpi('Deuda activa', money(debt.total),'acc-amber','loan', money(debt.cuotasMes)+' en cuotas/mes')}
       ${kpi('Patrimonio neto', money(nw.patrimonio), nw.patrimonio>=0?'acc-green':'acc-red','networth','Activos − pasivos')}
@@ -1859,6 +1860,15 @@ function presRows(anio,mes){ return DB.presupuesto.filter(b=>b.anio===anio && b.
    modo 'acumula': el saldo considera todo el histórico.
    ================================================================== */
 function saldoDe(bolsillo, mesKey){
+  // Bolsillo especial "Ahorros": sube con aportes tipo Ahorro, baja con gastos pagados desde él
+  if(bolsillo.esAhorro){
+    let cargado=0, gastado=0;
+    DB.movimientos.forEach(m=>{
+      if(m.tipo==='Ahorro' && (!m.saldoRecarga || m.saldoRecarga===bolsillo.id)) cargado+=num(m.monto);
+      else if(m.saldoId===bolsillo.id) gastado+=num(m.monto);
+    });
+    return { cargado, gastado, disponible: cargado-gastado };
+  }
   // mesKey opcional: si el bolsillo es modo 'recarga', se limita a ese mes (por defecto, el actual)
   const key = mesKey || currentMonthKey();
   const enRango = m => bolsillo.modo==='acumula' ? true : (monthKeyOf(m.fecha)===key);
@@ -1869,6 +1879,16 @@ function saldoDe(bolsillo, mesKey){
     else if(m.saldoId===bolsillo.id) gastado += num(m.monto);   // gasto pagado desde el bolsillo
   });
   return { cargado, gastado, disponible: cargado-gastado };
+}
+// Ahorro acumulado real = aportes de ahorro − retiros pagados desde el bolsillo Ahorros
+function ahorroBolsilloId(){ const b=DB.saldos&&DB.saldos.find(s=>s.esAhorro); return b?b.id:null; }
+function ahorroAcumulado(){
+  const aid=ahorroBolsilloId(); let aportes=0, retiros=0;
+  DB.movimientos.forEach(m=>{
+    if(m.tipo==='Ahorro' && (!m.saldoRecarga || m.saldoRecarga===aid)) aportes+=num(m.monto);
+    if(aid && m.saldoId===aid && m.tipo!=='Ahorro') retiros+=num(m.monto);
+  });
+  return aportes - retiros;
 }
 
 let saldosMes = currentMonthKey();
@@ -3115,6 +3135,10 @@ function init(){
   // Migración defensiva: asegura arrays esperados
   ['rubros','movimientos','presupuesto','flujo','tarjetas','consumos','prestamos','inversiones','metas','alertasResueltas','simulaciones','saldos'].forEach(k=>{ if(!Array.isArray(DB[k])) DB[k]=[]; });
   if(!DB.patrimonio) DB.patrimonio={activos:[],pasivos:[]};
+  // Asegura el bolsillo especial "Ahorros" (vinculado al ahorro real) si no existe
+  if(Array.isArray(DB.saldos) && !DB.saldos.some(s=>s.esAhorro)){
+    DB.saldos.unshift({id:uid(),nombre:'Ahorros',modo:'acumula',responsable:'Compartido',color:'#2bff9e',esAhorro:true});
+  }
   if(!DB.escenarios) DB.escenarios={optimista:{ingresos:8,egresos:-5,rendimiento:4,ahorro:15},pesimista:{ingresos:-10,egresos:8,rendimiento:-3,imprevistos:6}};
   buildNav();
   document.addEventListener('click', e=>{ if(!e.target.closest('.ms')) $$('.ms.open').forEach(x=>x.classList.remove('open')); });
