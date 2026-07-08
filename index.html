@@ -1311,6 +1311,12 @@ function tableEmpty(cols, msg='Sin datos cargados'){
 function monthTotals(key){
   const t = {Ingreso:0,Egreso:0,Ahorro:0,Inversión:0,'Pago deuda':0,'Pago tarjeta':0};
   DB.movimientos.filter(m=>monthKeyOf(m.fecha)===key).forEach(m=>{ t[m.tipo]=(t[m.tipo]||0)+num(m.monto); });
+  // Movimientos internos del bolsillo Ahorros (cargados desde el módulo Saldos) también cuentan como ahorro del mes
+  const aid = (DB.saldos||[]).find(s=>s.esAhorro)?.id;
+  if(aid && Array.isArray(DB.saldoMovs)){
+    DB.saldoMovs.filter(x=>x.saldoId===aid && monthKeyOf(x.fecha)===key)
+      .forEach(x=>{ t.Ahorro += (x.signo>0? num(x.monto) : -num(x.monto)); });
+  }
   t.resultado = t.Ingreso - t.Egreso - t.Ahorro - t.Inversión - t['Pago deuda'] - t['Pago tarjeta'];
   t.egresoTotal = t.Egreso + t['Pago deuda'] + t['Pago tarjeta'];
   return t;
