@@ -1032,6 +1032,44 @@ function makeChart(id, config){
 }
 const gridCfg = { grid:{color:C.grid}, ticks:{color:C.dim} };
 
+/* ---- Gráfico Ingresos vs Egresos: barra de ahorro + toggle de montos ---- */
+let __mostrarMontosIE = false;
+function toggleMontosIE(){
+  __mostrarMontosIE = !__mostrarMontosIE;
+  const b = document.getElementById('btnMontosIE');
+  if(b) b.textContent = __mostrarMontosIE ? 'Ocultar montos' : 'Mostrar montos';
+  drawIngEgr();
+}
+const montosPlugin = {
+  id:'montosIE',
+  afterDatasetsDraw(chart){
+    if(!__mostrarMontosIE) return;
+    const {ctx} = chart; ctx.save();
+    ctx.font='600 10px Inter, sans-serif'; ctx.textAlign='center';
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta=chart.getDatasetMeta(di); if(meta.hidden) return;
+      meta.data.forEach((bar,i)=>{
+        const v=ds.data[i]; if(!v) return;
+        ctx.fillStyle=ds.backgroundColor||'#cbd5e1';
+        ctx.fillText((Math.round(v/1000)).toLocaleString('es-PY')+'k', bar.x, bar.y-4);
+      });
+    });
+    ctx.restore();
+  }
+};
+function drawIngEgr(){
+  const d=window.__ieData; if(!d) return;
+  makeChart('chIngEgr',{ type:'bar',
+    data:{ labels:d.labels, datasets:[
+      {label:'Ingresos',data:d.ingData,backgroundColor:C.green,borderRadius:5},
+      {label:'Egresos',data:d.egrData,backgroundColor:C.red,borderRadius:5},
+      {label:'Ahorro',data:d.ahorroMesData,backgroundColor:C.blue,borderRadius:5}
+    ]},
+    options:{ plugins:{legend:{position:'bottom'}}, scales:{x:gridCfg,y:gridCfg} },
+    plugins:[montosPlugin]
+  });
+}
+
 /* ------------------------------------------------------------------
    6. DATOS DEMO / ESTADO INICIAL
 ------------------------------------------------------------------ */
@@ -1492,7 +1530,10 @@ RENDERERS.dashboard = (root)=>{
 
     <div class="sec-head"><div><h2>Ingresos vs Egresos</h2><p>Evolución de los últimos 6 meses</p></div></div>
     <div class="grid g-2">
-      <div class="card pad"><div class="card-title">${icon('movements')} Ingresos vs egresos por mes</div><div class="chart-box"><canvas id="chIngEgr"></canvas></div></div>
+      <div class="card pad"><div class="card-title" style="justify-content:space-between">
+        <span>${icon('movements')} Ingresos vs egresos por mes</span>
+        <button class="btn btn-sm btn-ghost" onclick="toggleMontosIE()" id="btnMontosIE">Mostrar montos</button>
+      </div><div class="chart-box"><canvas id="chIngEgr"></canvas></div></div>
       <div class="card pad"><div class="card-title">${icon('tags')} Distribución de egresos por rubro</div><div class="chart-box"><canvas id="chRubros"></canvas></div></div>
     </div>
 
@@ -1550,10 +1591,9 @@ RENDERERS.dashboard = (root)=>{
   const egrData = months.map(m=>monthTotals(m).egresoTotal);
   const labels = months.map(monthLabel);
 
-  makeChart('chIngEgr',{ type:'bar', data:{ labels, datasets:[
-    {label:'Ingresos',data:ingData,backgroundColor:C.green,borderRadius:5},
-    {label:'Egresos',data:egrData,backgroundColor:C.red,borderRadius:5}
-  ]}, options:{ plugins:{legend:{position:'bottom'}}, scales:{x:gridCfg,y:gridCfg} }});
+  const ahorroMesData = months.map(m=>monthTotals(m).Ahorro);
+  window.__ieData = { labels, ingData, egrData, ahorroMesData };
+  drawIngEgr();
 
   const er = egresosPorRubro(key);
   makeChart('chRubros',{ type:'doughnut', data:{ labels:er.map(e=>e[0]), datasets:[{data:er.map(e=>e[1]),backgroundColor:PALETTE,borderWidth:0}] },
