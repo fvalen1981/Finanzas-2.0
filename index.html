@@ -890,6 +890,7 @@ function currentMonthKey(){ return todayISO().slice(0,7); }
    3. ICONOS (SVG inline, sin dependencias)
 ------------------------------------------------------------------ */
 const ICONS = {
+  minus:'<path d="M5 12h14"/>',
   chevron:'<path d="M6 9l6 6 6-6"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>',
   moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
@@ -1867,16 +1868,23 @@ function saldoDe(bolsillo, mesKey){
       if(m.tipo==='Ahorro' && (!m.saldoRecarga || m.saldoRecarga===bolsillo.id)) cargado+=num(m.monto);
       else if(m.saldoId===bolsillo.id) gastado+=num(m.monto);
     });
+    // Movimientos internos cargados desde el propio módulo Saldos (Ahorros SÍ los cuenta)
+    DB.saldoMovs.filter(x=>x.saldoId===bolsillo.id).forEach(x=>{ if(x.signo>0) cargado+=num(x.monto); else gastado+=num(x.monto); });
     return { cargado, gastado, disponible: cargado-gastado };
   }
   // mesKey opcional: si el bolsillo es modo 'recarga', se limita a ese mes (por defecto, el actual)
   const key = mesKey || currentMonthKey();
-  const enRango = m => bolsillo.modo==='acumula' ? true : (monthKeyOf(m.fecha)===key);
+  const enRango = f => bolsillo.modo==='acumula' ? true : (monthKeyOf(f)===key);
   let cargado=0, gastado=0;
   DB.movimientos.forEach(m=>{
-    if(!enRango(m)) return;
+    if(!enRango(m.fecha)) return;
     if(m.saldoRecarga===bolsillo.id) cargado += num(m.monto);   // recarga: entra plata al bolsillo
-    else if(m.saldoId===bolsillo.id) gastado += num(m.monto);   // gasto pagado desde el bolsillo
+    else if(m.saldoId===bolsillo.id) gastado += num(m.monto);   // gasto pagado desde el bolsillo (vía Movimientos)
+  });
+  // Movimientos internos del bolsillo (cargados desde el módulo Saldos, NO impactan en otros módulos)
+  DB.saldoMovs.filter(x=>x.saldoId===bolsillo.id).forEach(x=>{
+    if(!enRango(x.fecha)) return;
+    if(x.signo>0) cargado += num(x.monto); else gastado += num(x.monto);
   });
   return { cargado, gastado, disponible: cargado-gastado };
 }
@@ -1888,6 +1896,8 @@ function ahorroAcumulado(){
     if(m.tipo==='Ahorro' && (!m.saldoRecarga || m.saldoRecarga===aid)) aportes+=num(m.monto);
     if(aid && m.saldoId===aid && m.tipo!=='Ahorro') retiros+=num(m.monto);
   });
+  // Movimientos internos cargados desde el módulo Saldos sobre el bolsillo Ahorros
+  if(aid) DB.saldoMovs.filter(x=>x.saldoId===aid).forEach(x=>{ if(x.signo>0) aportes+=num(x.monto); else retiros+=num(x.monto); });
   return aportes - retiros;
 }
 
@@ -1931,6 +1941,7 @@ RENDERERS.saldos = (root)=>{
           ${negativo?`<div class="hint warn" style="margin-top:8px">Gastaste más de lo cargado en este bolsillo.</div>`:''}
           <div class="btn-row" style="margin-top:12px">
             <button class="btn btn-sm btn-ghost" onclick="verDetalleSaldo('${b.id}')">${icon('search')} Detalle</button>
+            <button class="btn btn-sm btn-danger" onclick="movInternoSaldo('${b.id}',-1)">${icon('minus')} Gasto</button>
             <button class="btn btn-sm btn-green" onclick="recargarSaldo('${b.id}')">${icon('plus')} Recargar</button>
             <button class="btn btn-sm btn-ghost" onclick="editSaldo('${b.id}')">${icon('edit')}</button>
             <button class="btn btn-sm btn-danger" onclick="delSaldo('${b.id}')">${icon('trash')}</button>
@@ -1960,6 +1971,26 @@ function delSaldo(id){
 }
 
 // Recargar = crear un movimiento que SUMA al bolsillo (la transferencia de inicio de mes)
+// Movimiento INTERNO del bolsillo: vive solo en Saldos. No toca Movimientos ni KPIs.
+// (excepción: si es el bolsillo Ahorros, sí impacta en los KPIs de ahorro)
+function movInternoSaldo(id, signo){
+  const b=DB.saldos.find(x=>x.id===id); if(!b) return;
+  const esGasto = signo<0;
+  openForm((esGasto?'Cargar gasto · ':'Cargar ingreso · ')+b.nombre,[
+    {key:'fecha',label:'Fecha',type:'date',value:todayISO(),required:true},
+    {key:'concepto',label:'Concepto',type:'text',value:'',required:true,hint:'Ej: Biggie, farmacia, etc.'},
+    {key:'monto',label:'Monto',type:'number',value:'',required:true},
+    {key:'responsable',label:'Responsable',type:'select',options:RESPONSABLES,value:b.responsable||'Compartido'},
+    {key:'comentario',label:'Comentario',type:'text',value:'',full:true},
+  ], data=>{
+    DB.saldoMovs.push({ id:uid(), saldoId:id, signo:esGasto?-1:1, fecha:data.fecha,
+      concepto:data.concepto, monto:num(data.monto), responsable:data.responsable, comentario:data.comentario });
+    saveDB(); go('saldos');
+    toast(esGasto?'Gasto registrado en el bolsillo':'Ingreso registrado en el bolsillo');
+  });
+}
+function delMovInterno(id){ DB.saldoMovs=DB.saldoMovs.filter(x=>x.id!==id); saveDB(); toast('Movimiento eliminado'); }
+
 function recargarSaldo(id){
   if(!DB.saldos.length){ toast('Creá un bolsillo primero','err'); return; }
   const b = id? DB.saldos.find(x=>x.id===id):null;
@@ -1983,24 +2014,39 @@ function recargarSaldo(id){
 function verDetalleSaldo(id){
   const b=DB.saldos.find(x=>x.id===id); if(!b) return;
   const key=saldosMes;
-  const enRango = m => b.modo==='acumula' ? true : (monthKeyOf(m.fecha)===key);
-  const movs = DB.movimientos.filter(m=> enRango(m) && (m.saldoRecarga===id || m.saldoId===id))
-    .sort((a,b2)=>b2.fecha.localeCompare(a.fecha));
+  const enRango = f => (b.modo==='acumula'||b.esAhorro) ? true : (monthKeyOf(f)===key);
+  // Unifico movimientos que vienen de "Movimientos" (vía saldoId/saldoRecarga) + los internos del bolsillo
+  const lista = [];
+  DB.movimientos.forEach(m=>{
+    if(!enRango(m.fecha)) return;
+    if(b.esAhorro){
+      if(m.tipo==='Ahorro' && (!m.saldoRecarga || m.saldoRecarga===id)) lista.push({fecha:m.fecha,concepto:m.concepto||m.rubro,resp:m.responsable,signo:1,monto:m.monto,origen:'Movimientos'});
+      else if(m.saldoId===id) lista.push({fecha:m.fecha,concepto:m.concepto||m.rubro,resp:m.responsable,signo:-1,monto:m.monto,origen:'Movimientos'});
+    } else {
+      if(m.saldoRecarga===id) lista.push({fecha:m.fecha,concepto:m.concepto||m.rubro,resp:m.responsable,signo:1,monto:m.monto,origen:'Movimientos'});
+      else if(m.saldoId===id) lista.push({fecha:m.fecha,concepto:m.concepto||m.rubro,resp:m.responsable,signo:-1,monto:m.monto,origen:'Movimientos'});
+    }
+  });
+  DB.saldoMovs.filter(x=>x.saldoId===id && enRango(x.fecha)).forEach(x=>{
+    lista.push({fecha:x.fecha,concepto:x.concepto,resp:x.responsable,signo:x.signo,monto:x.monto,origen:'interno',_id:x.id});
+  });
+  lista.sort((a,c)=>c.fecha.localeCompare(a.fecha));
   const s=saldoDe(b,key);
-  const rows = movs.length? movs.map(m=>{
-    const esRec = m.saldoRecarga===id;
-    return `<tr>
+  const rows = lista.length? lista.map(m=>`<tr>
       <td>${fmtDate(m.fecha,true)}</td>
-      <td>${esc(m.concepto||m.rubro)}</td>
-      <td>${respPill(m.responsable||'Compartido')}</td>
-      <td class="num ${esRec?'pos':'neg'}">${esRec?'+':'−'}${money(m.monto)}</td>
-    </tr>`;
-  }).join('') : tableEmpty(4,'Sin movimientos en este bolsillo');
+      <td>${esc(m.concepto)}${m.origen==='interno'?' <span class="section-tag">interno</span>':''}</td>
+      <td>${respPill(m.resp||'Compartido')}</td>
+      <td class="num ${m.signo>0?'pos':'neg'}">${m.signo>0?'+':'−'}${money(m.monto)}</td>
+    </tr>`).join('') : tableEmpty(4,'Sin movimientos en este bolsillo');
   infoModal('Detalle · '+b.nombre, `
     <div class="grid g-3" style="margin-bottom:12px">
       ${miniStat('Cargado',money(s.cargado),'pos')}
       ${miniStat('Gastado',money(s.gastado),'neg')}
       ${miniStat('Disponible',money(s.disponible),s.disponible<0?'neg':'pos')}
+    </div>
+    <div class="btn-row" style="margin-bottom:10px">
+      <button class="btn btn-sm btn-danger" onclick="closeModal();movInternoSaldo('${id}',-1)">${icon('minus')} Cargar gasto</button>
+      <button class="btn btn-sm btn-green" onclick="closeModal();movInternoSaldo('${id}',1)">${icon('plus')} Cargar ingreso</button>
     </div>
     <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Resp.</th><th class="num">Monto</th></tr></thead><tbody>${rows}</tbody></table></div>`, true);
 }
@@ -3133,7 +3179,7 @@ function init(){
   DB = loadDB();
   if(!DB){ DB = blankDB(); saveDB(); }
   // Migración defensiva: asegura arrays esperados
-  ['rubros','movimientos','presupuesto','flujo','tarjetas','consumos','prestamos','inversiones','metas','alertasResueltas','simulaciones','saldos'].forEach(k=>{ if(!Array.isArray(DB[k])) DB[k]=[]; });
+  ['rubros','movimientos','presupuesto','flujo','tarjetas','consumos','prestamos','inversiones','metas','alertasResueltas','simulaciones','saldos','saldoMovs'].forEach(k=>{ if(!Array.isArray(DB[k])) DB[k]=[]; });
   if(!DB.patrimonio) DB.patrimonio={activos:[],pasivos:[]};
   // Asegura el bolsillo especial "Ahorros" (vinculado al ahorro real) si no existe
   if(Array.isArray(DB.saldos) && !DB.saldos.some(s=>s.esAhorro)){
